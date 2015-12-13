@@ -406,6 +406,15 @@ window.onload = function(){
         return vMatrix;
     }
 
+    function create_mv_matrix(mMatrix){
+        var vMatrix = create_view_matrix();
+        var mvMatrix = m.create();
+
+        m.multiply(vMatrix, mMatrix, mvMatrix);
+        return mvMatrix;
+    }
+
+
     function create_mvp_matrix(mMatrix){
         var vMatrix = create_view_matrix();
         var pMatrix = m.identity(m.create());
@@ -447,7 +456,8 @@ window.onload = function(){
 
         var mMatrix = m.identity(m.create());
         gl.uniformMatrix4fv(uniLocation['mvpMatrix'], false, create_mvp_matrix(mMatrix));
-
+        gl.uniformMatrix4fv(uniLocation['mvMatrix'], false, create_mv_matrix(mMatrix));
+        gl.uniform3fv(uniLocation['viewVec'], false, create_view_matrix());
 
         var total_face = 0;
         for(var i = 0; i < material.length; i++){
@@ -514,7 +524,7 @@ window.onload = function(){
                         gl.blendFunc(gl.DST_COLOR, gl.ZERO);
                     }else if(mat.env_mode == 2){
                         // additive
-                        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
                     }
                     gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
                     gl.disable(gl.BLEND);
@@ -538,6 +548,7 @@ window.onload = function(){
 
         var mMatrix = m.identity(m.create());
         gl.uniformMatrix4fv(uniLocation['mvpMatrix'], false, create_mvp_matrix(mMatrix));
+        gl.uniformMatrix4fv(uniLocation['mvMatrix'], false, create_mv_matrix(mMatrix));
         gl.uniform1i(uniLocation['texture'], 0);
         gl.uniform1i(uniLocation['useTexture'], false);
         gl.uniform1i(uniLocation['edge'], false);
@@ -656,7 +667,7 @@ window.onload = function(){
     }
 
     var uniLocation = new Array();
-    var uniformVariables = ['mvpMatrix', 'texture', 'useTexture', 'invMatrix', 'lightDirection', 'edge', 'edgeColor', 'edgeSize', 'edgeScale', 'sphereMap'];
+    var uniformVariables = ['mvpMatrix', 'texture', 'useTexture', 'invMatrix', 'lightDirection', 'edge', 'edgeColor', 'edgeSize', 'edgeScale', 'sphereMap', 'mvMatrix'];
     for(var i in uniformVariables){
         uniLocation[uniformVariables[i]] = gl.getUniformLocation(prg, uniformVariables[i]);
     }
