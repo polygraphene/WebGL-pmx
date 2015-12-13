@@ -392,6 +392,13 @@ window.onload = function(){
         redraw();
     }
 
+    function create_view_vector(){
+        var vMatrix = create_view_matrix();
+        var invV = m.identity(m.create());
+        m.inverse(vMatrix, invV);
+        return [invV[2], invV[6], invV[10]];
+    }
+
     function create_view_matrix(){
         var vMatrix = m.identity(m.create());
         var tmpx0 = [x0, y0, z0];
@@ -399,7 +406,7 @@ window.onload = function(){
         for(var i = 0; i < 3; i++){
             tmpx0[i] = (tmpx0[i] - tmpx1[i]) * view_distance + tmpx1[i];
         }
-        m.lookAt(tmpx0, tmpx1, [0, 1, 0], vMatrix);
+        m.lookAt(tmpx0 /* eye */, tmpx1 /* center */, [0, 1, 0], vMatrix);
         m.rotate(vMatrix, rad[0], [1, 0, 0], vMatrix);
         m.rotate(vMatrix, rad[1], [0, 1, 0], vMatrix);
         m.rotate(vMatrix, rad[2], [0, 0, 1], vMatrix);
@@ -457,8 +464,9 @@ window.onload = function(){
         var mMatrix = m.identity(m.create());
         gl.uniformMatrix4fv(uniLocation['mvpMatrix'], false, create_mvp_matrix(mMatrix));
         gl.uniformMatrix4fv(uniLocation['mvMatrix'], false, create_mv_matrix(mMatrix));
-        gl.uniform3fv(uniLocation['viewVec'], false, create_view_matrix());
+        gl.uniform3fv(uniLocation['viewVec'], create_view_vector());
 
+        gl.enable(gl.BLEND);
         var total_face = 0;
         for(var i = 0; i < material.length; i++){
             if(draws[i] == 0){
@@ -475,6 +483,7 @@ window.onload = function(){
                 gl.enable(gl.CULL_FACE);
             }
             var face = mat.face;
+            //gl.blendFunc(gl.ONE, gl.ZERO);
             gl.uniform1i(uniLocation['edge'], false);
             if(i == 29){
                 //for(var n = 0; n < mat.face; n++){
@@ -483,6 +492,7 @@ window.onload = function(){
                 //}
             }
             if(mat.texture_index != -1){
+                gl.disable(gl.BLEND);
                 gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.texture_index]);
                 if(doDraw[0]){
                     gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
@@ -495,6 +505,7 @@ window.onload = function(){
                 toon_texture = gltexs[mat.toon_texture_index];
             }
             if(toon_texture != null){
+                gl.disable(gl.BLEND);
                 gl.bindTexture(gl.TEXTURE_2D, toon_texture);
                 if(doDraw[2]){
                     gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
@@ -513,8 +524,9 @@ window.onload = function(){
                 }
             }
             if(material[i].sp_index != -1){
-                gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.sp_index]);
                 if(doDraw[1]){
+                    gl.cullFace(gl.BACK);
+                    gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.sp_index]);
                     gl.uniform1i(uniLocation['useTexture'], true);
                     gl.uniform1i(uniLocation['sphereMap'], true);
                     gl.uniform1i(uniLocation['edge'], false);
@@ -524,10 +536,14 @@ window.onload = function(){
                         gl.blendFunc(gl.DST_COLOR, gl.ZERO);
                     }else if(mat.env_mode == 2){
                         // additive
-                        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+                        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                        //gl.blendFunc(gl.DST_ALPHA, gl.ONE_MINUS_DST_ALPHA);
+                        //gl.blendFunc(gl.ONE, gl.ZERO);
+                        //gl.blendFunc(gl.DST_COLOR, gl.ZERO);
+                        //gl.blendFunc(gl.ONE, gl.ZERO);
+                        //gl.blendFunc(gl.ZERO, gl.ONE);
                     }
                     gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
-                    gl.disable(gl.BLEND);
                     gl.uniform1i(uniLocation['sphereMap'], false);
                 }
             }
@@ -549,6 +565,7 @@ window.onload = function(){
         var mMatrix = m.identity(m.create());
         gl.uniformMatrix4fv(uniLocation['mvpMatrix'], false, create_mvp_matrix(mMatrix));
         gl.uniformMatrix4fv(uniLocation['mvMatrix'], false, create_mv_matrix(mMatrix));
+        gl.uniform3fv(uniLocation['viewVec'], create_view_vector());
         gl.uniform1i(uniLocation['texture'], 0);
         gl.uniform1i(uniLocation['useTexture'], false);
         gl.uniform1i(uniLocation['edge'], false);
@@ -639,6 +656,8 @@ window.onload = function(){
             textcon.fillRect(10, 20, 400, 30);
             textcon.fillStyle="#333333";
             textcon.fillText(sprintf("(%s,%s,%s) (%s,%s,%s) r=X, g=Y, y=Z Rad=%s,%s param:%s", x0, y0, z0, x1, y1, z1, rad[0].toFixed(3), rad[1].toFixed(3), view_distance), 10, 30);
+            var viewVec = create_view_vector();
+            textcon.fillText(sprintf("v:(%s,%s,%s)", viewVec[0], viewVec[1], viewVec[2]), 10, 40);
         }else{
             textcon.fillText("loading", 10, 100);
         }
@@ -667,7 +686,7 @@ window.onload = function(){
     }
 
     var uniLocation = new Array();
-    var uniformVariables = ['mvpMatrix', 'texture', 'useTexture', 'invMatrix', 'lightDirection', 'edge', 'edgeColor', 'edgeSize', 'edgeScale', 'sphereMap', 'mvMatrix'];
+    var uniformVariables = ['mvpMatrix', 'texture', 'useTexture', 'invMatrix', 'lightDirection', 'edge', 'edgeColor', 'edgeSize', 'edgeScale', 'sphereMap', 'mvMatrix', 'viewVec'];
     for(var i in uniformVariables){
         uniLocation[uniformVariables[i]] = gl.getUniformLocation(prg, uniformVariables[i]);
     }

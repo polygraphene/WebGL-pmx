@@ -8,6 +8,7 @@
 			attribute vec3 normal;
 			attribute vec4 color;
 			attribute vec2 textureCoord;
+			attribute vec2 textureCoordSphere;
 			attribute float edgeScale;
 			uniform   mat4 mvpMatrix;
 			uniform   bool edge;
@@ -32,7 +33,13 @@
 					// sphere mapping texture coord
 					vTextureCoord = (mvMatrix * vec4(normal, 1.0)).xy;
 					vTextureCoord = vTextureCoord / sqrt(dot(vTextureCoord, vTextureCoord));
-					//vTextureCoord = vec2(0.5, 0.3);
+					vTextureCoord = vec2(0.5, 0.3);
+					vec3 newView = viewVec / sqrt(dot(viewVec, viewVec));
+					vec3 fVec = newView - 2.0 * normal * dot(newView, normal);
+					//fVec = fVec / sqrt(dot(fVec, fVec));
+					vTextureCoord = (fVec * 0.5 + 0.5).xy;
+					//vTextureCoord = vec2(0.3, 0.8);
+					vColor        = vec4(0.2, 0.9, 0.9, 0.6);
 				}else{
 					// normal texture mapping (from uv)
 					vTextureCoord = textureCoord;
@@ -48,6 +55,7 @@
 			uniform mat4      invMatrix;
 			uniform vec3      lightDirection;
 			uniform sampler2D texture;
+			uniform sampler2D textureSphere;
 			uniform bool useTexture;
 			uniform vec4 edgeColor;
 			uniform   bool edge;
@@ -61,6 +69,12 @@
 					gl_FragColor   = edgeColor;
 				}else{
 					vec4 smpColor = vec4(1.0);
+					if(sphereMap){
+						//smpColor = texture2D(texture, vTextureCoord);
+						gl_FragColor  = vColor;
+						gl_FragColor.a = 0.4;
+						return;
+					}else
 					if(useTexture || sphereMap){
 						smpColor = texture2D(texture, vTextureCoord);
 					}
