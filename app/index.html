@@ -16,9 +16,11 @@
 			uniform		bool sphereMap;
 			uniform		mat4 mvMatrix;
 			uniform		vec3 viewVec;
+			uniform		vec4 specularColor;
 			varying   vec3 vNormal;
 			varying   vec4 vColor;
 			varying   vec2 vTextureCoord;
+			varying   vec2 vTextureCoordSphere;
 
 			void main(void){
 				vec3 pos    = position;
@@ -31,15 +33,16 @@
 				vColor = color;
 				if(sphereMap){
 					// sphere mapping texture coord
-					vTextureCoord = (mvMatrix * vec4(normal, 1.0)).xy;
-					vTextureCoord = vTextureCoord / sqrt(dot(vTextureCoord, vTextureCoord));
-					vTextureCoord = vec2(0.5, 0.3);
+					vTextureCoordSphere = (mvMatrix * vec4(normal, 1.0)).xy;
+					vTextureCoordSphere = vTextureCoordSphere / sqrt(dot(vTextureCoordSphere, vTextureCoordSphere));
 					vec3 newView = viewVec / sqrt(dot(viewVec, viewVec));
 					vec3 fVec = newView - 2.0 * normal * dot(newView, normal);
 					//fVec = fVec / sqrt(dot(fVec, fVec));
-					vTextureCoord = (fVec * 0.5 + 0.5).xy;
-					//vTextureCoord = vec2(0.3, 0.8);
-					vColor        = vec4(0.2, 0.9, 0.9, 0.6);
+					vTextureCoordSphere = (fVec * 0.5 + 0.5).xy;
+					vTextureCoord = vec2(0.3, 0.8);
+					//vColor        = vec4(0.2, 0.9, 0.9, 0.6);
+					vTextureCoord = textureCoord;
+					//vColor = specularColor;
 				}else{
 					// normal texture mapping (from uv)
 					vTextureCoord = textureCoord;
@@ -60,9 +63,12 @@
 			uniform vec4 edgeColor;
 			uniform   bool edge;
 			uniform		bool sphereMap;
+			uniform int envMode;
+
 			varying vec3 vNormal;
 			varying vec4 vColor;
 			varying vec2 vTextureCoord;
+			varying vec2 vTextureCoordSphere;
 
 			void main(void){
 				if(edge){
@@ -70,15 +76,25 @@
 				}else{
 					vec4 smpColor = vec4(1.0);
 					if(sphereMap){
-						//smpColor = texture2D(texture, vTextureCoord);
-						gl_FragColor  = vColor;
-						gl_FragColor.a = 0.4;
+						smpColor = texture2D(texture, vTextureCoord);
+						vec4 smpColorSphere = texture2D(textureSphere, vTextureCoordSphere);
+						if(envMode == 1){
+							// multiply
+							smpColorSphere.a = 0.1;
+							gl_FragColor  = vColor * (smpColor * (1.0 - smpColorSphere.a) + smpColorSphere * smpColorSphere.a);
+						}else if(envMode == 2){
+							// additive
+							smpColorSphere.a = 0.00;
+							gl_FragColor  = vColor * (smpColor * (1.0 - smpColorSphere.a) + smpColorSphere);
+						}
 						return;
 					}else
-					if(useTexture || sphereMap){
+					if(useTexture){
 						smpColor = texture2D(texture, vTextureCoord);
+						gl_FragColor  = vColor * smpColor;
+					}else{
+						gl_FragColor  = vColor * smpColor;
 					}
-					gl_FragColor  = vColor * smpColor;
 				}
 			}
 		</script>

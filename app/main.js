@@ -31,6 +31,8 @@ window.onload = function(){
     var basedir;
     var pmx_loaded = false;
     var doDraw = [1,1,1,1];
+    var morphs = [];
+    var enabled_morphs = [];
 
     function parse(buf) {
         var mybuf = new Buf(buf, 4);
@@ -254,7 +256,8 @@ window.onload = function(){
             material[i] = {face: face_num, texture_index: texture_index,
             sp_index: sp_index, env_mode: env_mode, toon_texture_index: toon_texture_index, toon: toon, toon_flag: toon_flag,
             name: name, current_face_index: total_face_count_mat - face_num,
-            drmode: drmode, edge_size: edgesize, edge_color: edge_color};
+            drmode: drmode, edge_size: edgesize, edge_color: edge_color,
+            specular_color: [spec[0], spec[1], spec[2], specularity]};
             face_to_tex[face_num] = i;
         }
 
@@ -326,6 +329,90 @@ window.onload = function(){
                 }
             }
         }//bone loop
+
+        // morph data
+        var morph_count = mybuf.read32();
+        for(var i = 0; i < morph_count; i++){
+            var local_morph_name = mybuf.readstr();
+            var eng_morph_name = mybuf.readstr();
+            console.log("morph " + i + " " + local_morph_name + " eng:" + eng_morph_name);
+            var handle = mybuf.read8();
+            var type = mybuf.read8();
+            var morph_offset_count = mybuf.read32();
+            console.log("cnt:" + morph_offset_count + " handle:" + handle + " type:" + type);
+            var offsets = Array(morph_offset_count);
+            morphs[i] = {name: local_morph_name, handle: handle, type: type, offsets: offsets};
+
+            for(var j = 0; j < morph_offset_count; j++){
+                var offset = offsets[j] = {};
+                if(type == 0){
+                    // group
+                    offset['morph_index'] = mybuf.readint(morph_index_size);
+                    offset['rate'] = mybuf.readf();
+                    console.log("morph_group: " + morph_index + " " + rate);
+                }else if(type == 1){
+                    // vertex
+                    offset['vertex_index'] = mybuf.readint(vertex_index_size);
+                    offset['vertex_offset'] = Array(3);
+                    offset['vertex_offset'][0] = mybuf.readf();
+                    offset['vertex_offset'][1] = mybuf.readf();
+                    offset['vertex_offset'][2] = mybuf.readf();
+                }else if(type == 2){
+                    // bone
+                    offset['bone_index'] = mybuf.readint(bone_index_size);
+                    for(var k = 0; k < 7; k++){
+                        mybuf.readf();
+                    }
+                }else if(type == 3){
+                    // uv
+                    offset['vertex_index'] = mybuf.readint(vertex_index_size);
+                    offset['uv_offset'] = Array(4);
+                    offset['uv_offset'][0] = mybuf.readf();
+                    offset['uv_offset'][1] = mybuf.readf();
+                    offset['uv_offset'][2] = mybuf.readf();
+                    offset['uv_offset'][3] = mybuf.readf();
+                }else if(type == 8){
+                    // material
+                    var mat_index = mybuf.readint(material_index_size);
+                    if(mat_index == -1){
+                        console.log("no mat");
+                    }else{
+                        console.log("   " + material[mat_index].name);
+                    }
+                    var offset_method = mybuf.read8();
+                    var diffuse_color = [];
+                    for(var k = 0; k < 4; k++){
+                        diffuse_color[k] = mybuf.readf();
+                    }
+                    var spec_color = [];
+                    for(var k = 0; k < 3; k++){
+                        spec_color[k] = mybuf.readf();
+                    }
+                    var specularity = mybuf.readf();
+                    var amb_color = [];
+                    for(var k = 0; k < 3; k++){
+                        amb_color[k] = mybuf.readf();
+                    }
+                    var edge_color = [];
+                    for(var k = 0; k < 4; k++){
+                        edge_color[k] = mybuf.readf();
+                    }
+                    var edge_size = mybuf.readf();
+                    var texture_tint = [];
+                    for(var k = 0; k < 4; k++){
+                        texture_tint[k] = mybuf.readf();
+                    }
+                    var env_tint = [];
+                    for(var k = 0; k < 4; k++){
+                        env_tint[k] = mybuf.readf();
+                    }
+                    var toon_tint = [];
+                    for(var k = 0; k < 4; k++){
+                        toon_tint[k] = mybuf.readf();
+                    }
+                }
+            }
+        }// morph loop
 
         pmx_loaded = true;
         loadcookie();
@@ -458,6 +545,7 @@ window.onload = function(){
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
 
         gl.uniform1i(uniLocation['texture'], 0);
+        gl.uniform1i(uniLocation['textureSphere'], 1);
         gl.uniform1i(uniLocation['useTexture'], true);
         gl.uniform1i(uniLocation['sphereMap'], false);
 
@@ -483,7 +571,6 @@ window.onload = function(){
                 gl.enable(gl.CULL_FACE);
             }
             var face = mat.face;
-            //gl.blendFunc(gl.ONE, gl.ZERO);
             gl.uniform1i(uniLocation['edge'], false);
             if(i == 29){
                 //for(var n = 0; n < mat.face; n++){
@@ -491,13 +578,49 @@ window.onload = function(){
                 //                texture_vb[faces_index[material[i].current_face_index+n]*2+1]);
                 //}
             }
-            if(mat.texture_index != -1){
-                gl.disable(gl.BLEND);
+            if(mat.texture_index != -1 && mat.sp_index != -1 && doDraw[0] && doDraw[1]){
+                gl.activeTexture(gl.TEXTURE0);
                 gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.texture_index]);
-                if(doDraw[0]){
+                gl.activeTexture(gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.sp_index]);
+                gl.uniform1i(uniLocation['useTexture'], true);
+                gl.uniform1i(uniLocation['sphereMap'], true);
+                gl.uniform1i(uniLocation['edge'], false);
+                gl.uniform1i(uniLocation['envMode'], mat.env_mode);
+                gl.uniform1i(uniLocation['specularColor'], mat.specular_color);
+                gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
+            } else if(mat.texture_index != -1 && doDraw[0]){
+                gl.activeTexture(gl.TEXTURE0);
+                gl.uniform1i(uniLocation['useTexture'], true);
+                gl.uniform1i(uniLocation['sphereMap'], false);
+                gl.uniform1i(uniLocation['edge'], false);
+                gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.texture_index]);
+                gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
+            }
+            else if(material[i].sp_index != -1 && doDraw[1]){
+                if(doDraw[1]){
+                    gl.cullFace(gl.BACK);
+                    gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.sp_index]);
+                    gl.uniform1i(uniLocation['useTexture'], true);
+                    gl.uniform1i(uniLocation['sphereMap'], true);
+                    gl.uniform1i(uniLocation['edge'], false);
+                    if(mat.env_mode == 1){
+                        // multiply
+                        gl.blendFunc(gl.DST_COLOR, gl.ZERO);
+                    }else if(mat.env_mode == 2){
+                        // additive
+                        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                        //gl.blendFunc(gl.DST_ALPHA, gl.ONE_MINUS_DST_ALPHA);
+                        //gl.blendFunc(gl.ONE, gl.ZERO);
+                        //gl.blendFunc(gl.DST_COLOR, gl.ZERO);
+                        //gl.blendFunc(gl.ONE, gl.ZERO);
+                        //gl.blendFunc(gl.ZERO, gl.ONE);
+                    }
                     gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
+                    gl.uniform1i(uniLocation['sphereMap'], false);
                 }
             }
+            gl.activeTexture(gl.TEXTURE0);
             var toon_texture = null;
             if(mat.toon_flag){
                 toon_texture = gltexs_default[mat.toon];
@@ -505,7 +628,6 @@ window.onload = function(){
                 toon_texture = gltexs[mat.toon_texture_index];
             }
             if(toon_texture != null){
-                gl.disable(gl.BLEND);
                 gl.bindTexture(gl.TEXTURE_2D, toon_texture);
                 if(doDraw[2]){
                     gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
@@ -521,30 +643,6 @@ window.onload = function(){
                 gl.bindTexture(gl.TEXTURE_2D, null);
                 if(doDraw[3]){
                     gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
-                }
-            }
-            if(material[i].sp_index != -1){
-                if(doDraw[1]){
-                    gl.cullFace(gl.BACK);
-                    gl.bindTexture(gl.TEXTURE_2D, gltexs[mat.sp_index]);
-                    gl.uniform1i(uniLocation['useTexture'], true);
-                    gl.uniform1i(uniLocation['sphereMap'], true);
-                    gl.uniform1i(uniLocation['edge'], false);
-                    gl.enable(gl.BLEND);
-                    if(mat.env_mode == 1){
-                        // multiply
-                        gl.blendFunc(gl.DST_COLOR, gl.ZERO);
-                    }else if(mat.env_mode == 2){
-                        // additive
-                        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-                        //gl.blendFunc(gl.DST_ALPHA, gl.ONE_MINUS_DST_ALPHA);
-                        //gl.blendFunc(gl.ONE, gl.ZERO);
-                        //gl.blendFunc(gl.DST_COLOR, gl.ZERO);
-                        //gl.blendFunc(gl.ONE, gl.ZERO);
-                        //gl.blendFunc(gl.ZERO, gl.ONE);
-                    }
-                    gl.drawElements(gl.TRIANGLES, face, gl.UNSIGNED_SHORT, mat.current_face_index * 2);
-                    gl.uniform1i(uniLocation['sphereMap'], false);
                 }
             }
         }
@@ -567,8 +665,10 @@ window.onload = function(){
         gl.uniformMatrix4fv(uniLocation['mvMatrix'], false, create_mv_matrix(mMatrix));
         gl.uniform3fv(uniLocation['viewVec'], create_view_vector());
         gl.uniform1i(uniLocation['texture'], 0);
+        gl.uniform1i(uniLocation['textureSphere'], 1);
         gl.uniform1i(uniLocation['useTexture'], false);
         gl.uniform1i(uniLocation['edge'], false);
+        gl.uniform1i(uniLocation['sphereMap'], false);
 
         gl.bindTexture(gl.TEXTURE_2D, null);
 
@@ -686,7 +786,7 @@ window.onload = function(){
     }
 
     var uniLocation = new Array();
-    var uniformVariables = ['mvpMatrix', 'texture', 'useTexture', 'invMatrix', 'lightDirection', 'edge', 'edgeColor', 'edgeSize', 'edgeScale', 'sphereMap', 'mvMatrix', 'viewVec'];
+    var uniformVariables = ['mvpMatrix', 'texture', 'textureSphere', 'useTexture', 'invMatrix', 'lightDirection', 'edge', 'edgeColor', 'edgeSize', 'edgeScale', 'sphereMap', 'mvMatrix', 'viewVec', 'envMode', 'specularColor'];
     for(var i in uniformVariables){
         uniLocation[uniformVariables[i]] = gl.getUniformLocation(prg, uniformVariables[i]);
     }
