@@ -1,0 +1,43 @@
+body {
+	margin: 0;
+	padding: 0;
+}
+
+#canvas {
+	width: 100%;
+	height: 100%;
+}
+
+#col{
+	display: none;
+}
+
+#checks {
+	left: 20px;
+	top: 100px;
+	background-color: white;
+	display: flex;
+	flex-flow: column wrap;
+	height: calc(100% - 200px);
+	padding: 5px;
+	justify-content: flex-start;
+	overflow-x: scroll;
+}
+
+.over {
+	background-color: transparent;
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	z-index: 100;
+}
+
+.checkcon {
+	flex: 1 1 10px;
+}
+.checkboxes {
+	height: 10px;
+}
+label {
+	font-size: 10px;
+}

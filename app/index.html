@@ -1,15 +1,19 @@
 <html>
 	<head>
 		<link href="style.css" rel="stylesheet" type="text/css" />
+		<meta name="viewport" content="width=device-width,initial-scale=1">
 		<title>test</title>
 		<script id="vs" type="x-shader/x-vertex">
 			attribute vec3 position;
 			attribute vec4 color;
+			attribute vec2 textureCoord;
 			uniform   mat4 mvpMatrix;
 			varying   vec4 vColor;
+			varying   vec2 vTextureCoord;
 
 			void main(void){
 				vColor = color;
+				vTextureCoord = textureCoord;
 				gl_Position = mvpMatrix * vec4(position, 1.0);
 			}
 		</script>
@@ -17,10 +21,13 @@
 		<script id="fs" type="x-shader/x-fragment">
 			precision mediump float;
 
+			uniform sampler2D texture;
 			varying vec4 vColor;
+			varying vec2      vTextureCoord;
 
 			void main(void){
-				gl_FragColor = vColor;
+				vec4 smpColor = texture2D(texture, vTextureCoord);
+				gl_FragColor  = vColor * smpColor;
 			}
 		</script>
 	</head>
@@ -35,8 +42,10 @@
 				<button id="bt_x1p">x1+</button><button id="bt_x1m">x1-</button>
 				<button id="bt_y1p">y1+</button><button id="bt_y1m">y1-</button>
 				<button id="bt_z1p">z1+</button><button id="bt_z1m">z1-</button>
+				<button id="bt_p1p">p1+</button><button id="bt_p1m">p1-</button>
 			</div>
 			<div class="over" id="col"></div>
+			<div class="over" id="checks"></div>
 		</div>
 		<script language="javascript" src="minMatrix.js"></script>
 		<script language="javascript" src="main.js"></script>

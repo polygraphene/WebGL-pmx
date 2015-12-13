@@ -2,6 +2,7 @@ window.onload = function(){
     var m = new matIV();
     var gl, c;
     var vb = null;
+    var texture_vb = null;
     var vertex_color_vbo;
     var faces_ibo;
     var faces_ibo_count;
@@ -12,6 +13,13 @@ window.onload = function(){
     var y1 = 8.0;
     var z1 = 0.0;
     var rad = [0.0, 0.0, 0.0];
+    var textures;
+    var gltexs = [];
+    var material = [];
+    var face_to_tex = [];
+    var test_texture = null;
+    var param = 0;
+    var draws = [];
 
     function parse(buf) {
         var mybuf = new Buf(buf, 4);
@@ -30,14 +38,11 @@ window.onload = function(){
         console.log("ver:" + vertex_index_size + " tex:" + texture_index_size + " mat:" + material_index_size);
         console.log("bone:" + bone_index_size + " morph:" + morph_index_size + " rigid:" + rigid_body_index_size);
         // model info
-        var pos = 4 + 4 + 9;
         var model_name_local = mybuf.readstr();
         console.log("name:" + model_name_local);
         var model_name_eng = mybuf.readstr();
         var comment_local = mybuf.readstr();
         var comment_eng = mybuf.readstr();
-
-        appendix=3;
 
         // vertex data
         console.log("start of vertex data: " + mybuf.pos.toString(16));
@@ -45,6 +50,7 @@ window.onload = function(){
         console.log("vertex count: " + vertex_count);
 
         vb = Array(vertex_count * 3);
+        texture_vb = Array(vertex_count * 2);
         for(var i = 0; i < vertex_count; i++){
             //console.log("vertex "+i+":");
             var x = mybuf.readf();
@@ -53,12 +59,15 @@ window.onload = function(){
             vb[i * 3 + 0] = x;
             vb[i * 3 + 1] = y;
             vb[i * 3 + 2] = z;
+            // Normal
+            var normal_x = mybuf.readf();
+            var normal_y = mybuf.readf();
+            var normal_z = mybuf.readf();
             //console.log("x,y,z:" + x + "," +y + "," + z);
             var uv_0 = mybuf.readf();
             var uv_1 = mybuf.readf();
-            for(var j = 0; j < appendix; j++){
-                mybuf.readf();
-            }
+            texture_vb[i * 2 + 0] = uv_0;
+            texture_vb[i * 2 + 1] = uv_1;
             var weight_type = mybuf.read8();
             //console.log("wt:" + weight_type);
 
@@ -101,18 +110,44 @@ window.onload = function(){
         faces_ibo_count = face_count;
         var tex_count = mybuf.read32();
         console.log("tex count: " + tex_count);
+        textures = Array(tex_count);
+        gltexs = Array(tex_count);
         for(var i = 0; i < tex_count; i++){
-            var s = mybuf.readstr();
+            draws[i] = 1;
+            textures[i] = mybuf.readstr();
             //console.log("tex "+i+" " + s);
+            var tex;
+            var img = new Image();
+
+            img.onload = (function(fix_i){
+                return function(event){
+                    var tex = gltexs[fix_i] = gl.createTexture();
+                    gl.bindTexture(gl.TEXTURE_2D, tex);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, event.target);
+                    gl.generateMipmap(gl.TEXTURE_2D);
+                    gl.bindTexture(gl.TEXTURE_2D, null);
+                    var found = false;
+                    for(var k = 0; k < gltexs.length; k++){
+                        if(gltexs[k] == null){
+                            found = true;
+                            break;
+                        }
+                    }
+                    if(!found){
+                        // all texture were loaded.
+                        redraw();
+                    }
+                }
+            })(i);
+            img.src = './data/test1/' + textures[i];
         }
+        var total_face_count_mat = 0;
         var mat_count = mybuf.read32();
         console.log("mat count: " + mat_count);
         for(var i = 0; i < mat_count; i++){
-            console.log("mat " + i + " pos:" + mybuf.pos.toString(16));
             var name = mybuf.readstr();
-            console.log("name:" + name);
             var engname = mybuf.readstr();
-            console.log("engname:" + engname);
+            console.log("mat " + i + " " + name + " " + engname);
             var dif = Array(4);
             dif[0] = mybuf.readf();
             dif[1] = mybuf.readf();
@@ -128,7 +163,6 @@ window.onload = function(){
             amb[1] = mybuf.readf();
             amb[2] = mybuf.readf();
             var drmode = mybuf.read8();
-            console.log("mode" + drmode);
             var edge = Array(3);
             edge[0] = mybuf.readf();
             edge[1] = mybuf.readf();
@@ -136,18 +170,24 @@ window.onload = function(){
             var edgesize = mybuf.readf();
             var dummy = mybuf.readf();
 
-            mybuf.readint(texture_index_size);
-            mybuf.readint(texture_index_size);
-            mybuf.read8();
+            var texture_index = mybuf.readint(texture_index_size);
+            var sp_index = mybuf.readint(texture_index_size);
+            var a = mybuf.read8();
             var toon_flag = mybuf.read8();
+            var toon;
+            var toon_texture_index = -1;
             if(toon_flag){
-                mybuf.read8();
+                toon = mybuf.read8();
             }else{
-                mybuf.readint(texture_index_size);
+                toon_texture_index = mybuf.readint(texture_index_size);
             }
             var memo = mybuf.readstr();
-            console.log("memo:" + memo);
-            mybuf.read32();
+            var face_num = mybuf.read32();
+            total_face_count_mat += face_num;
+            console.log("mode:" + drmode +
+                        " tex:" + (texture_index < 0 ? texture_index : textures[texture_index]) + " sp:" +
+                            (sp_index < 0 ? sp_index : textures[sp_index]) +
+                                " toon:" + (toon_texture_index < 0 ? toon_texture_index : textures[toon_texture_index]) + " face:" + face_num + " tot:" + total_face_count_mat);
 
             function t(c){
                 function m(t){
@@ -164,12 +204,18 @@ window.onload = function(){
                 "<span color='" + t(spec) + "'>spe" + i + " </span>"+
                 "<span color='" + t(amb) + "'>amb" + i + " </span>";
 
+            material[i] = {face: face_num, texture_index: texture_index,
+            sp_index: sp_index, toon_texture_index: toon_texture_index, toon: toon,
+            name: name, current_face_index: total_face_count_mat - face_num,
+            drmode: drmode};
+            face_to_tex[face_num] = i;
         }
+        loadcookie();
     }
 
     function load(callback) {
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', './data/Tuneちゃん_ハイポリ版.pmx', true);
+        xhr.open('GET', './data/test1/a.pmx', true);
         xhr.responseType = 'arraybuffer';
         xhr.onload = function(e) {
             parse(this.response);
@@ -199,12 +245,7 @@ window.onload = function(){
         return mvpMatrix;
     }
 
-    function draw_face(gl, c, prg, vbo, color_vbo, ibo, ibo_count) {
-        // attributeの要素数を配列に格納
-        var attStride = new Array(2);
-        attStride[0] = 3;
-        attStride[1] = 4;
-
+    function draw_face(gl, c, prg, vbo, color_vbo, texture_vbo, ibo, ibo_count) {
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
         gl.enableVertexAttribArray(attLocation[0]);
         gl.vertexAttribPointer(attLocation[0], attStride[0], gl.FLOAT, false, 0, 0);
@@ -213,13 +254,24 @@ window.onload = function(){
         gl.enableVertexAttribArray(attLocation[1]);
         gl.vertexAttribPointer(attLocation[1], attStride[1], gl.FLOAT, false, 0, 0);
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, texture_vbo);
+        gl.enableVertexAttribArray(attLocation[2]);
+        gl.vertexAttribPointer(attLocation[2], attStride[2], gl.FLOAT, false, 0, 0);
+
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
 
-        var mMatrix = m.identity(m.create());
-        gl.uniformMatrix4fv(uniLocation, false, create_mvp_matrix(mMatrix));
+        gl.uniform1i(uniLocation[1], 0);
 
-        for(var i = 0; i < faces_ibo_count / 3; i++){
-            gl.drawElements(gl.TRIANGLES, 3, gl.UNSIGNED_SHORT, i*3*2);
+        var mMatrix = m.identity(m.create());
+        gl.uniformMatrix4fv(uniLocation[0], false, create_mvp_matrix(mMatrix));
+
+        var total_face = 0;
+        for(var i = 0; i < material.length; i++){
+            if(draws[i] == 0){
+                continue;
+            }
+            gl.bindTexture(gl.TEXTURE_2D, gltexs[material[i].texture_index]);
+            gl.drawElements(gl.TRIANGLES, material[i].face, gl.UNSIGNED_SHORT, material[i].current_face_index * 2);
         }
 
         gl.flush();
@@ -227,10 +279,6 @@ window.onload = function(){
 
     function draw(gl, c, prg, vbo, color_vbo, mode) {
         // attributeの要素数を配列に格納
-        var attStride = new Array(2);
-        attStride[0] = 3;
-        attStride[1] = 4;
-
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
         gl.enableVertexAttribArray(attLocation[0]);
         gl.vertexAttribPointer(attLocation[0], attStride[0], gl.FLOAT, false, 0, 0);
@@ -240,7 +288,7 @@ window.onload = function(){
         gl.vertexAttribPointer(attLocation[1], attStride[1], gl.FLOAT, false, 0, 0);
 
         var mMatrix = m.identity(m.create());
-        gl.uniformMatrix4fv(uniLocation, false, create_mvp_matrix(mMatrix));
+        gl.uniformMatrix4fv(uniLocation[0], false, create_mvp_matrix(mMatrix));
 
         if(mode == 1){
             gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -319,14 +367,14 @@ window.onload = function(){
         //draw(gl, c, prg, vbo1, vbo_color, 1);
         draw(gl, c, prg, vbo2, vbo_grid_color, 0);
         if(vbo3){
-            draw_face(gl, c, prg, vbo3, vbo_a_color, faces_ibo, faces_ibo_count);
+            draw_face(gl, c, prg, vbo3, vbo_a_color, vbo_texture, faces_ibo, faces_ibo_count);
         }
         textcon.clearRect(0, 0, textcon.canvas.width, textcon.canvas.height);
         if(vb){
             textcon.fillStyle="#FFFFFF";
-            textcon.fillRect(10, 90, 300, 200);
+            textcon.fillRect(10, 20, 400, 30);
             textcon.fillStyle="#333333";
-            textcon.fillText(sprintf("(%s,%s,%s) (%s,%s,%s) red=X, green=Y, yellow=Z", x0, y0, z0, x1, y1, z1), 10, 100);
+            textcon.fillText(sprintf("(%s,%s,%s) (%s,%s,%s) r=X, g=Y, y=Z Rad=%s,%s param:%s", x0, y0, z0, x1, y1, z1, rad[0].toFixed(3), rad[1].toFixed(3), param), 10, 30);
         }else{
             textcon.fillText("loading", 10, 100);
         }
@@ -344,11 +392,22 @@ window.onload = function(){
     var vs = create_shader('vs');
     var fs = create_shader('fs');
     var prg = create_program(vs, fs);
+
     var attLocation = new Array(2);
     attLocation[0] = gl.getAttribLocation(prg, 'position');
     attLocation[1] = gl.getAttribLocation(prg, 'color');
-    var uniLocation = gl.getUniformLocation(prg, 'mvpMatrix');
+    attLocation[2] = gl.getAttribLocation(prg, 'textureCoord');
+    var attStride = new Array(2);
+    attStride[0] = 3;
+    attStride[1] = 4;
+    attStride[2] = 2;
+
+    var uniLocation = new Array();
+    uniLocation[0]  = gl.getUniformLocation(prg, 'mvpMatrix');
+    uniLocation[1]  = gl.getUniformLocation(prg, 'texture');
     var testval = 0;
+
+    gl.activeTexture(gl.TEXTURE0);
 
     var vertex_position = [
         0.0, 9.0, 0.0,
@@ -359,9 +418,9 @@ window.onload = function(){
         -9.0, 0.0, 0.0
     ];
     var colors = [
-         1.0, 0.0, 0.0, 1.0,
-         0.0, 1.0, 0.0, 1.0,
-         0.0, 0.0, 1.0, 1.0,
+         0.8, 0.8, 0.8, 1.0,
+         0.8, 0.8, 0.8, 1.0,
+         0.8, 0.8, 0.8, 1.0,
          1.0, 0.0, 0.0, 1.0,
          0.0, 1.0, 0.0, 1.0,
          0.0, 0.0, 1.0, 1.0,
@@ -390,25 +449,66 @@ window.onload = function(){
     var vbo_color = create_vbo(colors);
     var vbo_grid_color = create_vbo(grid_colors);
     var vbo_a_color;
+    var test_image = new Image();
+    test_image.onload = function(){
+        test_texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, test_texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, test_image);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    };
+    test_image.src = "./data/white.png";
 
+    gl.enable(gl.DEPTH_TEST);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     draw(gl, c, prg, vbo1, vbo_color, 1);
-    setInterval(function(){
-        redraw();
-    }, 1000);
+    //setInterval(function(){
+    //    redraw();
+    //}, 1000);
     var vbo3;
+    var vbo_texture;
     load(function(){
-        var a_colors = Array(3 * vb.length / 3 * 3);
-        for(var i = 0; i < a_colors.length; i+=9){
-            for(var j = 0; j < 9; j+=9){
+        var a_colors = Array(4 * vb.length / 3);
+        for(var i = 0; i < a_colors.length; i+=12){
+            for(var j = 0; j < 12; j+=1){
                 a_colors[i+j] = colors[j];
             }
         }
         vbo_a_color = create_vbo(a_colors);
+        var checksHtml = "";
+        for(var i = 0; i < material.length; i++){
+            var checked = draws[i] ? " checked" : "";
+            checksHtml += sprintf("<div class=checkcon><input data-id='%s' type=checkbox id='check%s' class='checkboxes'%s><label for='check%s'>%s</label></div>",
+                                  i, i, checked, i, material[i].name);
+        }
+        checksHtml += "<div class=checkcon></div>";
+        document.getElementById('checks').innerHTML = checksHtml;
+        document.onchange = function(event){
+            var id = event.target.getAttribute('data-id');
+            if(id == null){
+                return;
+            }
+            if(event.target.checked){
+                draws[id] = 1;
+            }else{
+                draws[id] = 0;
+            }
+            savecookie();
+            redraw();
+        };
 
         vbo3 = create_vbo(vb);
+        vbo_texture = create_vbo(texture_vb);
         redraw();
     });
+    function savecookie(){
+        document.cookie = JSON.stringify(draws);
+    }
+    function loadcookie(){
+        if(document.cookie != ""){
+            draws = JSON.parse(document.cookie);
+        }
+    }
     //c.onclick = function(){
     //    testval += 1;
     //    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -425,6 +525,7 @@ window.onload = function(){
     create_button('x1', function(){x1 += 1;redraw();}, function(){x1 -= 1;redraw();});
     create_button('y1', function(){y1 += 1;redraw();}, function(){y1 -= 1;redraw();});
     create_button('z1', function(){z1 += 1;redraw();}, function(){z1 -= 1;redraw();});
+    create_button('p1', function(){param += 1;redraw();}, function(){param -= 1;redraw();});
 
     var dragging = false;
     var startx;
@@ -443,6 +544,28 @@ window.onload = function(){
         if(dragging){
             //rad[0] = startrad[0] + (e.y - starty) / 50;
             rad[1] = startrad[1] + (e.x - startx) / 100;
+            redraw();
+        }
+    };
+
+    document.getElementById('container').ontouchstart = function(e){
+        dragging = true;
+        startx = e.changedTouches[0].pageX;
+        starty = e.changedTouches[0].pageY;
+        startrad = [].concat(rad);
+    };
+    document.getElementById('container').ontouchend = function(){
+        dragging = false;
+    };
+    document.ontouchmove = function(e){
+        if(dragging){
+            //rad[0] = startrad[0] + (e.y - starty) / 50;
+            rad[1] = startrad[1] + (e.changedTouches[0].pageX - startx) / 100;
+            if(rad[1] > Math.PI * 2){
+                rad[1] -= Math.PI * 2;
+            }else if(rad[1] < 0){
+                rad[1] += Math.PI * 2;
+            }
             redraw();
         }
     };
@@ -482,7 +605,11 @@ Buf.prototype = {
     read16: function() {
         var u = new Uint8Array(this.buf, this.pos, 2);
         this.pos += 2;
-        return (u[0]) | (u[1] << 8 & 0xFF00);
+        var tmp = (u[0]) | (u[1] << 8 & 0xFF00);
+        if(tmp >= (1 << 15)){
+            return (1 << 16) - tmp;
+        }
+        return tmp;
     },
     read32: function() {
         var u = new Uint8Array(this.buf, this.pos, 4);
@@ -495,7 +622,7 @@ Buf.prototype = {
         return floatView[0];
     },
     read8: function() {
-        var u = new Uint8Array(this.buf, this.pos, 1);
+        var u = new Int8Array(this.buf, this.pos, 1);
         this.pos++;
         return u[0];
     },
