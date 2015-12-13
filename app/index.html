@@ -5,29 +5,64 @@
 		<title>test</title>
 		<script id="vs" type="x-shader/x-vertex">
 			attribute vec3 position;
+			attribute vec3 normal;
 			attribute vec4 color;
 			attribute vec2 textureCoord;
+			attribute float edgeScale;
 			uniform   mat4 mvpMatrix;
+			uniform   bool edge;
+			uniform   float edgeSize;
+			uniform		bool sphereMap;
+			uniform		mat4 mvMatrix;
+			varying   vec3 vNormal;
 			varying   vec4 vColor;
 			varying   vec2 vTextureCoord;
 
 			void main(void){
+				vec3 pos    = position;
+				if(edge){
+					vec4 diffvec = mvpMatrix * vec4(pos, 1.0);
+					vec4 diffvec2 = mvpMatrix * vec4(pos + normal, 1.0) - diffvec;
+					float pixelScale = 1.0 / sqrt(dot(diffvec2.xyz, diffvec2.xyz));
+					pos    += normal * edgeSize * edgeScale * pixelScale * 0.01;
+				}
 				vColor = color;
-				vTextureCoord = textureCoord;
-				gl_Position = mvpMatrix * vec4(position, 1.0);
+				if(sphereMap){
+					// sphere mapping texture coord
+					vTextureCoord = (mvpMatrix * vec4(normal, 1.0)).xy;
+				}else{
+					// normal texture mapping (from uv)
+					vTextureCoord = textureCoord;
+				}
+				vNormal     = normal;
+				gl_Position = mvpMatrix * vec4(pos, 1.0);
 			}
 		</script>
 
 		<script id="fs" type="x-shader/x-fragment">
 			precision mediump float;
 
+			uniform mat4      invMatrix;
+			uniform vec3      lightDirection;
 			uniform sampler2D texture;
+			uniform bool useTexture;
+			uniform vec4 edgeColor;
+			uniform   bool edge;
+			uniform		bool sphereMap;
+			varying vec3 vNormal;
 			varying vec4 vColor;
-			varying vec2      vTextureCoord;
+			varying vec2 vTextureCoord;
 
 			void main(void){
-				vec4 smpColor = texture2D(texture, vTextureCoord);
-				gl_FragColor  = vColor * smpColor;
+				if(edge){
+					gl_FragColor   = edgeColor;
+				}else{
+					vec4 smpColor = vec4(1.0);
+					if(useTexture){
+						smpColor = texture2D(texture, vTextureCoord);
+					}
+					gl_FragColor  = vColor * smpColor;
+				}
 			}
 		</script>
 	</head>
@@ -43,6 +78,10 @@
 				<button id="bt_y1p">y1+</button><button id="bt_y1m">y1-</button>
 				<button id="bt_z1p">z1+</button><button id="bt_z1m">z1-</button>
 				<button id="bt_p1p">p1+</button><button id="bt_p1m">p1-</button>
+				<input type=checkbox checked id="dodraw0"><label for=dodraw0>d0</label>
+				<input type=checkbox checked id="dodraw1"><label for=dodraw1>d1</label>
+				<input type=checkbox checked id="dodraw2"><label for=dodraw2>d2</label>
+				<input type=checkbox checked id="dodraw3"><label for=dodraw3>d3</label>
 			</div>
 			<div class="over" id="col"></div>
 			<div class="over" id="checks"></div>
